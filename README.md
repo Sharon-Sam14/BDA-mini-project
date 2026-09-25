@@ -41,6 +41,7 @@ All project specifications are cataloged in the [`docs/`](docs/) directory:
 - **Team Member 2:** Big Data Processing & Spark (PySpark pipeline, demand scoring, supply-demand mismatch, temporal analysis).
 - **Team Member 3:** Business Analytics & Visualization (Discount elasticity modeling, recommendation engine, Streamlit + Plotly dashboard).
 
+---
 
 ## 🛠️ Onboarding & Local Environment Setup
 
