@@ -1,0 +1,19 @@
+# config/pipeline_config.yaml
+storage:
+  type: "local"  # Set to "local" for your current workspace testing. Switch to "hdfs" later.
+  
+  local:
+    raw_base: "data/raw"
+    processed_base: "data/processed"
+    
+  hdfs:
+    namenode: "hdfs://localhost:9000"
+    raw_base: "/ecommerce/raw"
+    processed_base: "/ecommerce/processed"
+
+analytics:
+  weights:
+    search: 0.15
+    view: 0.20
+    cart: 0.30
+    purchase: 0.35
