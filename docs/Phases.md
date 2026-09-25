@@ -13,11 +13,11 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **Phase 0** | Project Initialization | Lead / All | **COMPLETED** | Day 1 |
 | **Phase 1** | Requirements & Core Documentation | Lead / All | **COMPLETED** | Day 1 |
-| **Phase 2** | Environment Setup & Configuration | Team Member 1 | **NOT STARTED** | Day 2 |
-| **Phase 3** | Synthetic Dataset Generation | Team Member 1 | **NOT STARTED** | Day 3 |
-| **Phase 4** | Data Validation & Local Preprocessing | Team Member 1 | **NOT STARTED** | Day 4 |
-| **Phase 5** | HDFS Cluster Integration & Storage Layout | Team Member 1 | **NOT STARTED** | Day 5 |
-| **Phase 6** | Apache Spark / PySpark Infrastructure Setup | Team Member 2 | **NOT STARTED** | Day 6 |
+| **Phase 2** | Environment Setup & Configuration | Team Member 1 | **COMPLETED** | Day 2 |
+| **Phase 3** | Synthetic Dataset Generation | Team Member 1 | **COMPLETED** | Day 3 |
+| **Phase 4** | Data Validation & Local Preprocessing | Team Member 1 | **COMPLETED** | Day 4 |
+| **Phase 5** | HDFS Cluster Integration & Storage Layout | Team Member 1 | **COMPLETED** | Day 5 |
+| **Phase 6** | Apache Spark / PySpark Infrastructure Setup | Team Member 2 | **COMPLETED** | Day 6 |
 | **Phase 7** | Regional Trend & Geo-Spatial Analytics | Team Member 2 | **NOT STARTED** | Day 7 |
 | **Phase 8** | Multi-Action Demand Scoring Engine | Team Member 2 | **NOT STARTED** | Day 8 |
 | **Phase 9** | Supply-Demand Mismatch Analysis | Team Member 2 | **NOT STARTED** | Day 9 |
