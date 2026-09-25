@@ -69,7 +69,7 @@
 ---
 
 ### Phase 2: Environment Setup & Configuration
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED**
 - **Objective:** Install and configure the local Python virtual environment, Java runtime, Hadoop binaries, and PySpark dependencies.
 - **Tasks:**
   - Setup Python 3.10+ virtual environment (`venv`).
@@ -85,7 +85,7 @@
 ---
 
 ### Phase 3: Synthetic Dataset Generation
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED**
 - **Objective:** Develop high-throughput synthetic generators for `products`, `events`, and `inventory`.
 - **Tasks:**
   - Implement `scripts/data_generation/geo_metadata.py` with major Indian/global metro coordinates.
@@ -101,7 +101,7 @@
 ---
 
 ### Phase 4: Data Validation & Local Preprocessing
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED**
 - **Objective:** Validate generated raw data quality, bounds, and referential integrity before ingestion.
 - **Tasks:**
   - Implement `spark/preprocessing/validate_records.py`.
@@ -116,7 +116,7 @@
 ---
 
 ### Phase 5: HDFS Cluster Integration & Storage Layout
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED**
 - **Objective:** Provision HDFS directory hierarchy, configure replication, and upload raw data.
 - **Tasks:**
   - Write `scripts/hdfs_init.sh` to initialize `/ecommerce/raw/` and `/ecommerce/processed/` in HDFS.
@@ -131,7 +131,7 @@
 ---
 
 ### Phase 6: Apache Spark / PySpark Infrastructure Setup
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED**
 - **Objective:** Construct reusable SparkSession factory, schema definitions, and I/O utilities.
 - **Tasks:**
   - Implement `spark/utils/spark_session.py` with custom memory, cores, and serializer configs.
