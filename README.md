@@ -211,3 +211,54 @@ hdfs dfs -put -f data/raw/inventory/inventory.csv /ecommerce/raw/inventory/
 
 python spark/processing/process_regional_trends.py
 ```
+---
+
+# Part 2: Quick Daily Restart Guide (For You)
+ 
+When you reopen your laptop and want to run or test the project again, your environment and files are already installed.
+ 
+> ✅ You do **NOT** need to format the NameNode or re-install anything.
+ 
+Follow these simple steps:
+ 
+## Step 1: Start HDFS Daemons
+ 
+Open **Command Prompt** and run:
+ 
+```cmd
+cd C:\hadoop\sbin
+start-dfs.cmd
+```
+ 
+> Two black windows for **NameNode** and **DataNode** will launch. Leave them running in the background.
+ 
+## Step 2: Activate the Virtual Environment
+ 
+Open a terminal in your project directory (`D:\PROJECTS\BDA-mini-project-main`):
+ 
+```powershell
+venv\Scripts\activate
+```
+ 
+## Step 3: Run the PySpark Processing Job
+ 
+Run your pipeline script directly:
+ 
+```powershell
+python spark/processing/process_regional_trends.py
+```
+ 
+## Step 4: Verify Processed HDFS Data
+ 
+```powershell
+hdfs dfs -ls -R /ecommerce/processed/
+```
+ 
+## Step 5: Shut Down (When Finished)
+ 
+When you are done working for the day:
+ 
+```cmd
+cd C:\hadoop\sbin
+stop-dfs.cmd
+```
