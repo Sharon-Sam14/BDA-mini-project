@@ -43,59 +43,171 @@ All project specifications are cataloged in the [`docs/`](docs/) directory:
 
 ---
 
-## 🛠️ Onboarding & Local Environment Setup
+# Part 1: Fresh Laptop Setup Guide (For Team Member 3)
 
-Follow these steps sequentially to configure your local development workspace and sync system environment parameters.
+## 1. Core Software Installations
 
-### 1. Machine Prerequisites
-Install these system-wide environments globally before initializing the repository:
-- **Python 3.11** (Ensure the installer checkbox **"Add python.exe to PATH"** is selected)
-- **Eclipse Temurin JDK 17** (Ensure **"Set JAVA_HOME variable"** is enabled during the install wizard)
+### A. Install Java Development Kit (JDK 11)
 
-### 2. Hadoop Storage Drivers (Windows Requirement)
-Because Apache Spark relies on POSIX-like system configurations to interact with local storage networks on Windows:
-1. Create a local folder structure explicitly mapped to: `C:\hadoop\bin\`
-2. Place the Hadoop 3.x `winutils.exe` application binary file directly inside that `bin` folder.
-   *(Final verification path footprint must read: `C:\hadoop\bin\winutils.exe`)*
+PySpark and Hadoop require **JDK 11** on Windows.
 
-### 3. Virtual Workspace Initialization
-Open your Command Prompt (cmd) inside the root directory `D:\AOA\BDA-mini-project-main` and isolate the dependency layers:
+1. Download **Eclipse Adoptium Temurin OpenJDK 11** (MSI installer) for Windows x64.
+2. Run the installer.
+3. **Important during setup:** Select the option **"Set JAVA_HOME variable"** and choose **"Will be installed on local hard drive"**.
+4. The installation path should ideally be:
 
-```cmd
-:: Create your isolated machine virtual environment configuration
-py -3.11 -m venv venv
+   ```
+   C:\Program Files\Eclipse Adoptium\jdk-11.x.x.x-hotspot\
+   ```
 
-:: Activate the local virtual environment workspace
-venv\Scripts\activate
+### B. Install Python 3.10+
 
-:: Synchronize exact operational library footprints 
-pip install --upgrade pip
-pip install -r requirements.txt
-```
+1. Download Python (**3.10 to 3.12**) from [python.org](https://www.python.org/).
+2. Run the installer and check the box **"Add python.exe to PATH"** before clicking **Install**.
 
-### 4. Active System Path Mappings
-Open the Windows Start menu, type **"Edit the system environment variables"**, open the dashboard tab, and add these parameters under **System Variables**:
-- `JAVA_HOME` ➔ Path to your Eclipse Temurin installation folder (e.g., `C:\Program Files\Eclipse Adoptium\jdk-17.0.20.101-hotspot`)
-- `HADOOP_HOME` ➔ `C:\hadoop`
+### C. Install Git
+
+1. Download and install Git for Windows from [git-scm.com](https://git-scm.com/).
+2. Use all default installer settings.
 
 ---
 
-## 🧪 Pipeline Orchestration & Smoke Testing
+## 2. Hadoop Native Windows Binaries Setup
 
-To verify that your workspace runtimes, memory configurations, and Java hooks are communicating seamlessly, execute the master single-command automated pipeline:
+Apache Hadoop requires native Windows binaries (`winutils.exe` and `hadoop.dll`) to run HDFS on Windows.
+
+1. Create a folder named `C:\hadoop`.
+2. Extract the pre-configured **Apache Hadoop 3.3.6** binaries into `C:\hadoop` so that `C:\hadoop\bin` and `C:\hadoop\sbin` exist.
+3. Download the matching `winutils.exe` and `hadoop.dll` for **Hadoop 3.3.6**, then:
+   - Place `winutils.exe` into `C:\hadoop\bin\`
+   - Copy `hadoop.dll` into **both** `C:\hadoop\bin\` and `C:\Windows\System32\`
+
+---
+
+## 3. System Environment Variables Setup
+
+Search for **"Edit the system environment variables"** in the Windows Start Menu and click **Environment Variables**.
+
+> **Note on short paths:** Both `Program Files` and `Eclipse Adoptium` contain spaces, which break Hadoop's scripts. Find the exact 8.3 short names by running this in `cmd`:
+>
+> ```cmd
+> dir /x "C:\Program Files"
+> ```
+>
+> Look for the short name next to `Eclipse Adoptium` (usually `ECLIPS~1`). The resulting path is typically `C:\Progra~1\ECLIPS~1\jdk-11.x.x.x-hotspot`.
+
+**System Variables (bottom box):**
+
+1. Click **New**:
+   - **Variable name:** `JAVA_HOME`
+   - **Variable value:** `C:\Progra~1\ECLIPS~1\jdk-11.x.x.x-hotspot`
+2. Click **New**:
+   - **Variable name:** `HADOOP_HOME`
+   - **Variable value:** `C:\hadoop`
+3. Edit the `Path` variable → Click **New** → Add these entries:
+   - `%JAVA_HOME%\bin`
+   - `%HADOOP_HOME%\bin`
+   - `%HADOOP_HOME%\sbin`
+
+---
+
+## 4. Hadoop XML Configuration Files
+
+All files below are in `C:\hadoop\etc\hadoop\`.
+
+### Edit `hadoop-env.cmd`
+
+Find `set JAVA_HOME=` and set it using the short path, **without quotes**:
 
 ```cmd
-:: Re-activate your virtual runtime workspace environment
-venv\Scripts\activate
-
-:: Launch the end-to-end processing harness
-python scripts/run_pipeline.py
+set JAVA_HOME=C:\Progra~1\ECLIPS~1\jdk-11.x.x.x-hotspot
 ```
 
-### Ingestion Output Matrix
-When executed cleanly, the automation loop will yield:
-1. **`Phase 3`**: Generates 100,000 synthetic shopper logs (`data/raw/`).
-2. **`Phase 4`**: Boots a local PySpark master node cluster to enforce geographic boundaries, schema casting, and catalog referential integrity rules.
-3. **`Phase 5`**: Establishes local raw staging file paths and configures processing folders (`data/processed/`).
+### Edit `core-site.xml`
 
-If your terminal window returns **`🎉 ALL INGESTION PIPELINE STAGES COMPLETED CLEANLY 🎉`**, your environment is completely configured!
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://localhost:9000</value>
+    </property>
+</configuration>
+```
+
+### Edit `hdfs-site.xml`
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+    </property>
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>file:///C:/hadoop/data/dfs/namenode</value>
+    </property>
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>file:///C:/hadoop/data/dfs/datanode</value>
+    </property>
+</configuration>
+```
+
+---
+
+## 5. Repository Setup & First-Time Execution
+
+Open **Command Prompt (`cmd`) as Administrator**.
+
+### Step 1: Clone the Repository
+
+```cmd
+git clone https://github.com/Sharon-Sam14/BDA-mini-project.git
+cd BDA-mini-project
+```
+
+### Step 2: Set Up the Python Virtual Environment
+
+```cmd
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Step 3: Format the HDFS NameNode (First-Time Only)
+
+```cmd
+hdfs namenode -format
+```
+
+### Step 4: Start HDFS Services
+
+```cmd
+cd C:\hadoop\sbin
+start-dfs.cmd
+```
+
+> ⚠️ **Keep the two popped-up NameNode and DataNode windows open in the background!**
+
+### Step 5: Generate Data & Execute the PySpark Job
+
+Return to your project directory terminal (with `venv` active):
+
+```cmd
+python scripts/data_generation/generate_all.py --scale demo
+
+hdfs dfs -mkdir -p /ecommerce/raw/events
+hdfs dfs -mkdir -p /ecommerce/raw/products
+hdfs dfs -mkdir -p /ecommerce/raw/inventory
+hdfs dfs -mkdir -p /ecommerce/processed
+
+hdfs dfs -put -f data/raw/events/events.csv /ecommerce/raw/events/
+hdfs dfs -put -f data/raw/products/products.csv /ecommerce/raw/products/
+hdfs dfs -put -f data/raw/inventory/inventory.csv /ecommerce/raw/inventory/
+
+python spark/processing/process_regional_trends.py
+```
