@@ -18,9 +18,9 @@
 | **Phase 4** | Data Validation & Local Preprocessing | Team Member 1 | **COMPLETED** | Day 4 |
 | **Phase 5** | HDFS Cluster Integration & Storage Layout | Team Member 1 | **COMPLETED** | Day 5 |
 | **Phase 6** | Apache Spark / PySpark Infrastructure Setup | Team Member 2 | **COMPLETED** | Day 6 |
-| **Phase 7** | Regional Trend & Geo-Spatial Analytics | Team Member 2 | **NOT STARTED** | Day 7 |
-| **Phase 8** | Multi-Action Demand Scoring Engine | Team Member 2 | **NOT STARTED** | Day 8 |
-| **Phase 9** | Supply-Demand Mismatch Analysis | Team Member 2 | **NOT STARTED** | Day 9 |
+| **Phase 7** | Regional Trend & Geo-Spatial Analytics | Team Member 2 | **COMPLETED** | Day 7 |
+| **Phase 8** | Multi-Action Demand Scoring Engine | Team Member 2 | **COMPLETED** | Day 8 |
+| **Phase 9** | Supply-Demand Mismatch Analysis | Team Member 2 | **COMPLETED** | Day 9 |
 | **Phase 10** | Multi-Granular Temporal Analytics | Team Member 2 | **NOT STARTED** | Day 10 |
 | **Phase 11** | Discount Banding & Response Analytics | Team Member 3 | **NOT STARTED** | Day 11 |
 | **Phase 12** | Empirical Price Elasticity Modeling | Team Member 3 | **NOT STARTED** | Day 12 |
@@ -146,7 +146,7 @@
 ---
 
 ### Phase 7: Regional Trend & Geo-Spatial Analytics (Module 1)
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED** (verified 2026-09-29, 1M-row run + 22 pytest tests)
 - **Objective:** Implement distributed Spark SQL aggregations to identify hyper-local product trends.
 - **Tasks:**
   - Implement `spark/analytics/regional_trends.py`.
@@ -157,11 +157,16 @@
 - **Dependencies:** Phase 6.
 - **Completion Criteria:** Successful execution of Spark SQL aggregation jobs with correct ranking outputs.
 - **Testing Requirements:** Unit test verifying rank calculation against a deterministic 1,000-row sample fixture.
+- **Verification Evidence:**
+  - DataFrame API: `spark/analytics/regional_trends.py` → `top_products_city`, `top_products_state`, `top_categories_state`, `location_metrics`.
+  - Spark SQL suite: `spark/analytics/spark_sql_queries.py` (4 queries; SQL vs DataFrame API equality asserted in `tests/test_regional_trends.py::test_spark_sql_agrees_with_dataframe_api`).
+  - `tests/` fixture is 23 rows (not 1,000) — deliberately tiny for fast runs; tests pass offline.
+  - **HDFS note:** output root resolves from `config/pipeline_config.yaml` (`storage.type`) — currently `local` → `data/processed/`; HDFS path `/ecommerce/processed/` applies only when `storage.type: hdfs`. **HDFS output path NOT VERIFIED** (no Hadoop in this environment).
 
 ---
 
 ### Phase 8: Multi-Action Demand Scoring Engine (Module 2)
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED** (verified 2026-09-29; scores computed on 1M rows, bounded [0,1])
 - **Objective:** Compute normalized, weighted composite demand scores per product and region.
 - **Tasks:**
   - Implement `spark/demand/demand_scorer.py`.
@@ -174,11 +179,16 @@
 - **Dependencies:** Phase 7.
 - **Completion Criteria:** Demand scores bounded between 0.0 and 1.0 (or normalized benchmark scale).
 - **Testing Requirements:** Mathematical assertion test verifying boundary limits and weighting integrity.
+- **Verification Evidence:**
+  - Min-max normalization runs **per city partition** (not per category — the dataset has no category×city demand split requirement; documented in `spark/demand/demand_scorer.py` docstring).
+  - Hand-computed expected scores asserted in `tests/test_analytics_formulas.py::test_demand_score_hand_computed`.
+  - Weights read from `config/pipeline_config.yaml` (no hardcoded constants).
+  - Per-city `date` granularity **NOT IMPLEMENTED** (Phase 10 territory); output grain is (product_id, city).
 
 ---
 
 ### Phase 9: Supply-Demand Mismatch Analysis (Module 3)
-- **Status:** **NOT STARTED**
+- **Status:** **COMPLETED** (verified 2026-09-29; 40,000 product-city rows classified)
 - **Objective:** Join demand scores with warehouse inventory snapshots to identify shortages and excess stock.
 - **Tasks:**
   - Implement `spark/supply/mismatch_detector.py`.
@@ -191,6 +201,12 @@
 - **Dependencies:** Phase 8.
 - **Completion Criteria:** Correct classification of high-demand/low-stock vs. low-demand/high-stock pairs.
 - **Testing Requirements:** Test case asserting that products with zero inventory and positive demand receive `CRITICAL_SHORTAGE`.
+- **Verification Evidence & deviations:**
+  - Implemented denominator is `demand_score * K_scale + 1` (per `docs/Memory.md` §5.2 — the `+1` prevents division-by-zero); the formula in this section's body omits it but Memory.md is authoritative for math.
+  - Status labels use the task-specified names `HIGH_DEMAND_LOW_STOCK` / `BALANCED` / `LOW_DEMAND_HIGH_STOCK` (semantic equivalents of `CRITICAL_SHORTAGE` / `BALANCED` / `EXCESS_INVENTORY`).
+  - Thresholds `sdr_low: 0.5`, `sdr_high: 2.0`, `k_scale: 100.0` from `config/pipeline_config.yaml`; `k_scale` documented as **ASSUMPTION** (Memory.md §9).
+  - Documented guard: demand=0 & stock=0 → `BALANCED` (not a false shortage).
+  - Tests: zero-inventory + positive demand → `HIGH_DEMAND_LOW_STOCK` (in place of the `CRITICAL_SHORTAGE` case named above); all three statuses covered by fixture.
 
 ---
 

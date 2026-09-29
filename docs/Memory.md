@@ -9,10 +9,11 @@
 
 ## 1. Project Status Summary
 
-- **CURRENT STATUS:** Data Engineering & Storage Ingestion Infrastructure 100% Complete.
-- **COMPLETED:** Phase 2, 3, 4, 5, and 6 core scripts verified operational.
-- **CURRENT PHASE:** Phase 6: Handoff to Team Member 2 (Spark Analytics Engine).
-- **APPLICATION IMPLEMENTATION STATUS:** Staging environment and core pipelines fully complete.
+- **CURRENT STATUS:** Phases 0–9 complete (Member 1 data+HDFS verified with caveats; Member 2 Spark analytics implemented & tested).
+- **COMPLETED:** Phase 2–6 core scripts; Phase 7–9 analytics (`spark/analytics/`, `spark/demand/`, `spark/supply/`) verified 2026-09-29 on 1M rows.
+- **CURRENT PHASE:** Phase 10 (temporal analytics) not started; Member 2 handoff items 1–9 done.
+- **APPLICATION IMPLEMENTATION STATUS:** Local-mode pipeline end-to-end operational; HDFS path **NOT VERIFIED** (no Hadoop installed on dev machine).
+- **MEMBER 1 AUDIT (2026-09-29):** generation/Faker/schema/validation/scaling COMPLETE; `hdfs_upload.py` was a stub (real `hdfs dfs` calls commented out) → **FIXED** (real mkdir/put/-ls with honest exit-1 when `hdfs` CLI absent); 10M scale **AT RISK** (events built as Python list in RAM).
 
 
 ---
@@ -129,9 +130,9 @@ $$E_d = \frac{\% \Delta Q}{\% \Delta P} = \frac{(Q_2 - Q_1) / \left(\frac{Q_1 + 
 - **Phase 4: Data Validation & Local Preprocessing** $\rightarrow$ **COMPLETED**
 - **Phase 5: HDFS Cluster Integration & Storage** $\rightarrow$ **COMPLETED**
 - **Phase 6: Spark / PySpark Infrastructure Setup** $\rightarrow$ **COMPLETED**
-- **Phase 7: Regional Trend Analytics** $\rightarrow$ **NOT STARTED**
-- **Phase 8: Demand Scoring Engine** $\rightarrow$ **NOT STARTED**
-- **Phase 9: Supply-Demand Mismatch Analysis** $\rightarrow$ **NOT STARTED**
+- **Phase 7: Regional Trend Analytics** $\rightarrow$ **COMPLETED** (2026-09-29; `regional_trends.py` + `spark_sql_queries.py`, 22 pytest tests pass)
+- **Phase 8: Demand Scoring Engine** $\rightarrow$ **COMPLETED** (2026-09-29; `demand_scorer.py`, hand-computed assertions pass)
+- **Phase 9: Supply-Demand Mismatch Analysis** $\rightarrow$ **COMPLETED** (2026-09-29; `mismatch_detector.py`, 3-class status verified)
 - **Phase 10: Multi-Granular Temporal Analytics** $\rightarrow$ **NOT STARTED**
 - **Phase 11: Discount Analytics** $\rightarrow$ **NOT STARTED**
 - **Phase 12: Price Elasticity Modeling** $\rightarrow$ **NOT STARTED**
@@ -172,6 +173,8 @@ $$E_d = \frac{\% \Delta Q}{\% \Delta P} = \frac{(Q_2 - Q_1) / \left(\frac{Q_1 + 
 - **ASSUMPTION-002:** User conversion rates follow a standard e-commerce funnel drop-off ($Search \approx 50\%, View \approx 30\%, Cart \approx 15\%, Purchase \approx 5\%$).
 - **ASSUMPTION-003:** Price elasticity is treated as an empirical analytical approximation over grouped discount brackets rather than an econometric causal model.
 - **ASSUMPTION-004:** Available inventory represents daily warehouse opening stock and is decremented by purchase aggregations.
+- **ASSUMPTION-005 (`k_scale = 100.0`):** A demand score of 1.0 corresponds to ~100 units of expected weekly velocity in the SDR denominator. Value is configurable (`config/pipeline_config.yaml` → `analytics.mismatch.k_scale`); not derived from data. Sensitivity: raising `k_scale` shifts more pairs into `LOW_DEMAND_HIGH_STOCK`.
+- **ASSUMPTION-006:** Demand normalization partitions are **(city)**, not (category × city) — sufficient for the FR-10 "per region" requirement given the 8-city fixture.
 
 ---
 
@@ -188,16 +191,22 @@ $$E_d = \frac{\% \Delta Q}{\% \Delta P} = \frac{(Q_2 - Q_1) / \left(\frac{Q_1 + 
 
 ## 11. Empirical Verification & Performance Metrics
 
-- **Spark Job Execution Times:** NOT YET CALCULATED (Awaiting Phase 6/16)
-- **HDFS Block Distribution:** NOT YET CALCULATED (Awaiting Phase 5)
-- **Data Compression Ratio:** NOT YET CALCULATED (Awaiting Phase 3/4)
-- **Elasticity Summary by Category:** NOT YET CALCULATED (Awaiting Phase 12)
-- **Known Bugs / Defects:** None logged.
+- **Spark Job Execution Times:** Full Member 2 chain (`spark/run_spark_analytics.py`, 1M events, 5k products, 40k inventory, local[4], Java 22 + PySpark 4.2): **~57 s** measured 2026-09-29. Dev-scale (100k) generation: ~3 s; demo (1M) generation: ~22.7 s. Test suite (22 tests): ~89 s.
+- **Member 1 Data Verification (2026-09-29, 1M rows):** 0 nulls, 0 duplicate `event_id`, 0 FK violations, all timestamps parse `yyyy-MM-dd HH:mm:ss`, discount ∈ [0,70], coordinates within India bounds, `validate_records.py` exit 0 ("100% passed").
+- **Member 2 Output Volumes (1M rows):** `demand_scores` 40,000 rows (score range 0.0693–0.7729); `supply_demand` 40,000 rows (status split: 4,916 `HIGH_DEMAND_LOW_STOCK` / 3,990 `BALANCED` / 31,094 `LOW_DEMAND_HIGH_STOCK`); 16 Parquet files under `data/processed/`. Note: excess skew toward `LOW_DEMAND_HIGH_STOCK` reflects real data (purchases ≈ 10% of events vs. stock up to 450 units), not a hardcoded classification.
+- **HDFS Block Distribution:** NOT VERIFIED — no Hadoop installed on this machine (`hdfs` CLI absent); `hdfs_upload.py` HDFS branch tested to fail with exit 1 rather than fake success.
+- **Data Compression Ratio:** NOT YET CALCULATED (Parquet outputs exist but ratio not measured).
+- **Elasticity Summary by Category:** NOT YET CALCULATED (Awaiting Phase 12).
+- **Known Bugs / Defects:**
+  - 10M-event generation may OOM (`generate_events.py` materializes a Python list of dicts before DataFrame conversion) — **NOT TESTED** at 10M.
+  - `process_regional_trends.py` still hardcodes `hdfs://localhost:9000` (Rules 2.4 violation; legacy, superseded by config-driven `spark/analytics/`).
 
 ---
 
 ## 12. Immediate Next Steps
 
-1. Verify completeness and cross-document consistency of all six files in `/docs/`.
-2. Await user confirmation before transitioning from planning mode to execution mode.
-3. Upon approval, initiate **Phase 2: Environment Setup & Configuration**.
+1. Run `python scripts/run_pipeline.py` then `python spark/run_spark_analytics.py` from repo root (requires `HADOOP_HOME=C:\hadoop`, `PYSPARK_PYTHON=python`, `C:\hadoop\bin` on PATH — set as user env vars 2026-09-29).
+2. Phase 10–13 (temporal / discount / elasticity / recommendations) not started — owner: Members 2/3 per responsibility matrix.
+3. HDFS verification: install Hadoop 3.3.6 per README Part 1, set `storage.type: hdfs`, run `python hdfs/hdfs_upload.py` (now executes real `hdfs dfs` commands and fails loudly if unavailable) — **currently NOT VERIFIED**.
+4. Test 10M benchmark scale before claiming FR-03 benchmark mode (possible OOM, see §11).
+5. Add `spark/pricing/` and dashboard only when Phases 11–14 are picked up.

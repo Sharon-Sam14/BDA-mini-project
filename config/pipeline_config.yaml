@@ -17,3 +17,10 @@ analytics:
     view: 0.20
     cart: 0.30
     purchase: 0.35
+  normalization_epsilon: 1.0e-6   # guards min-max normalization division (Memory.md 5.1)
+  regional:
+    top_n: 10                     # top-N products/categories per location
+  mismatch:
+    k_scale: 100.0                # ASSUMPTION: weekly unit velocity at demand score 1.0 (Memory.md 5.2)
+    sdr_low: 0.5                  # SDR < 0.5  -> HIGH_DEMAND_LOW_STOCK (critical shortage)
+    sdr_high: 2.0                 # SDR > 2.0  -> LOW_DEMAND_HIGH_STOCK (excess inventory)
