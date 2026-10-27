@@ -1,471 +1,96 @@
-// frontend/app/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
-// ==========================================
-// DATA TYPE SCHEMAS MAPPING PYSPARK STRUCTS
-// ==========================================
-interface TrendRecord {
-  state: string;
-  category: string;
-  total_orders: number;
-  total_revenue: number;
+type TrendRecord = { state: string; category: string; total_orders: number; total_revenue: number };
+type DemandRecord = { state: string; city: string; product_name: string; category: string; demand_score: number };
+type MismatchRecord = { state: string; city: string; product_name: string; available_stock: number; demand_score: number; sdr: number; status: string };
+type Tab = "regional-trends" | "demand-scores" | "supply-demand";
+
+const demoTrends: TrendRecord[] = [
+  { state: "Maharashtra", category: "Electronics", total_orders: 18420, total_revenue: 4825000 },
+  { state: "Karnataka", category: "Fashion", total_orders: 15280, total_revenue: 3268000 },
+  { state: "Telangana", category: "Home & Living", total_orders: 12140, total_revenue: 2914000 },
+  { state: "Delhi", category: "Electronics", total_orders: 10870, total_revenue: 2786000 },
+  { state: "Tamil Nadu", category: "Beauty", total_orders: 9670, total_revenue: 1842000 },
+  { state: "Gujarat", category: "Fashion", total_orders: 8430, total_revenue: 1679000 },
+];
+const demoDemand: DemandRecord[] = [
+  { state: "Maharashtra", city: "Mumbai", product_name: "Wireless Earbuds", category: "Electronics", demand_score: .9421 },
+  { state: "Karnataka", city: "Bengaluru", product_name: "Running Shoes", category: "Fashion", demand_score: .8874 },
+  { state: "Telangana", city: "Hyderabad", product_name: "Air Fryer", category: "Home & Living", demand_score: .8238 },
+  { state: "Delhi", city: "New Delhi", product_name: "Smart Watch", category: "Electronics", demand_score: .7912 },
+  { state: "Tamil Nadu", city: "Chennai", product_name: "Skin Care Set", category: "Beauty", demand_score: .7345 },
+];
+const demoMismatch: MismatchRecord[] = [
+  { state: "Maharashtra", city: "Mumbai", product_name: "Wireless Earbuds", available_stock: 128, demand_score: .9421, sdr: .31, status: "CRITICAL_SHORTAGE" },
+  { state: "Karnataka", city: "Bengaluru", product_name: "Running Shoes", available_stock: 940, demand_score: .8874, sdr: 1.42, status: "BALANCED" },
+  { state: "Telangana", city: "Hyderabad", product_name: "Air Fryer", available_stock: 1840, demand_score: .8238, sdr: 2.61, status: "EXCESS_INVENTORY" },
+  { state: "Delhi", city: "New Delhi", product_name: "Smart Watch", available_stock: 210, demand_score: .7912, sdr: .58, status: "CRITICAL_SHORTAGE" },
+  { state: "Tamil Nadu", city: "Chennai", product_name: "Skin Care Set", available_stock: 560, demand_score: .7345, sdr: 1.08, status: "BALANCED" },
+];
+const compact = (n: number) => Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+const money = (n: number) => `₹${(n / 100000).toFixed(1)}L`;
+
+function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <section className={`rounded-2xl border border-white/[0.07] bg-[#101116] p-5 shadow-[0_12px_35px_rgba(0,0,0,.18)] ${className}`}>{children}</section>;
+}
+function PanelTitle({ eyebrow, title, side }: { eyebrow?: string; title: string; side?: React.ReactNode }) {
+  return <div className="mb-5 flex items-start justify-between gap-3"><div>{eyebrow && <p className="mb-1 text-[10px] font-semibold uppercase tracking-[.18em] text-zinc-500">{eyebrow}</p>}<h2 className="text-sm font-semibold text-zinc-100">{title}</h2></div>{side}</div>;
+}
+function Pill({ children, tone = "green" }: { children: React.ReactNode; tone?: "green" | "yellow" | "red" | "blue" | "muted" }) {
+  const colors = { green: "bg-emerald-400/10 text-emerald-300", yellow: "bg-amber-400/10 text-amber-300", red: "bg-rose-400/10 text-rose-300", blue: "bg-cyan-400/10 text-cyan-300", muted: "bg-white/[0.06] text-zinc-400" };
+  return <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-medium ${colors[tone]}`}>{children}</span>;
+}
+function Bars({ values, labels, color = "#35e6a1" }: { values: number[]; labels: string[]; color?: string }) {
+  const max = Math.max(...values, 1);
+  return <div className="flex h-44 items-end gap-2 sm:gap-3">{values.map((value, i) => <div key={`${labels[i]}-${i}`} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"><div className="flex h-full w-full items-end"><div title={`${labels[i]}: ${value.toLocaleString("en-IN")}`} className="w-full rounded-t-md transition-all" style={{ height: `${Math.max(5, value / max * 100)}%`, background: `linear-gradient(180deg, ${color}, ${color}55)` }} /></div><span className="w-full truncate text-center text-[9px] text-zinc-500">{labels[i]}</span></div>)}</div>;
+}
+function Sparkline({ values, color = "#35e6a1" }: { values: number[]; color?: string }) {
+  const max = Math.max(...values), min = Math.min(...values), range = max - min || 1;
+  const points = values.map((v, i) => `${i / (values.length - 1) * 280},${58 - (v - min) / range * 48}`).join(" ");
+  return <svg viewBox="0 0 280 64" className="h-14 w-full" preserveAspectRatio="none"><polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>;
 }
 
-interface DemandRecord {
-  state: string;
-  city: string;
-  product_name: string;
-  category: string;
-  demand_score: number;
-}
+export default function HomePage() {
+  const [trends, setTrends] = useState<TrendRecord[]>(demoTrends);
+  const [demand, setDemand] = useState<DemandRecord[]>(demoDemand);
+  const [mismatch, setMismatch] = useState<MismatchRecord[]>(demoMismatch);
+  const [tab, setTab] = useState<Tab>("regional-trends");
+  const [query, setQuery] = useState("");
+  const [source, setSource] = useState<"demo" | "live">("demo");
+  const [sourceMessage, setSourceMessage] = useState("Illustrative preview data · API connection pending");
 
-interface MismatchRecord {
-  state: string;
-  city: string;
-  product_name: string;
-  available_stock: number;
-  demand_score: number;
-  sdr: number;
-  status: string;
-}
-
-type TabType = "regional-trends" | "demand-scores" | "supply-demand";
-
-export default function DashboardPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("regional-trends");
-  const [trends, setTrends] = useState<TrendRecord[]>([]);
-  const [demandScores, setDemandScores] = useState<DemandRecord[]>([]);
-  const [mismatchData, setMismatchData] = useState<MismatchRecord[]>([]);
-
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Unified Search State Hook
-  const [searchQuery, setSearchQuery] = useState<string>("");
-
-  // ==========================================
-  // ASYNCHRONOUS DATA INGESTION ENGINE (FLASK)
-  // ==========================================
   useEffect(() => {
-    const fetchAllData = async () => {
+    let cancelled = false;
+    async function load() {
       try {
-        setLoading(true);
-        setError(null);
-
-        // Fetch Pipeline Module 1: Regional Sales Aggregates
-        const trendsRes = await fetch(
-          "http://localhost:5000/api/regional-trends",
-        );
-        if (!trendsRes.ok)
-          throw new Error(
-            `Trends API returned error status: ${trendsRes.status}`,
-          );
-        const trendsPayload = await trendsRes.json();
-        if (trendsPayload.status === "success") setTrends(trendsPayload.data);
-
-        // Fetch Pipeline Module 2: Intent Demand Scoring Engine
-        const demandRes = await fetch(
-          "http://localhost:5000/api/demand-scores",
-        );
-        if (!demandRes.ok)
-          throw new Error(
-            `Demand API returned error status: ${demandRes.status}`,
-          );
-        const demandPayload = await demandRes.json();
-        if (demandPayload.status === "success")
-          setDemandScores(demandPayload.data);
-
-        // Fetch Pipeline Module 3: Supply-Demand Mismatch Quadrant
-        const mismatchRes = await fetch(
-          "http://localhost:5000/api/supply-demand",
-        );
-        if (!mismatchRes.ok)
-          throw new Error(
-            `Mismatch API returned error status: ${mismatchRes.status}`,
-          );
-        const mismatchPayload = await mismatchRes.json();
-        if (mismatchPayload.status === "success")
-          setMismatchData(mismatchPayload.data);
-      } catch (err: unknown) {
-        console.error("Data engineering link layer error: ", err);
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to capture backend data streams.",
-        );
-      } finally {
-        setLoading(false);
+        const urls = ["http://localhost:5000/api/regional-trends", "http://localhost:5000/api/demand-scores", "http://localhost:5000/api/supply-demand"];
+        const responses = await Promise.all(urls.map(url => fetch(url)));
+        if (responses.some(r => !r.ok)) throw new Error("Analytics API unavailable");
+        const payloads = await Promise.all(responses.map(r => r.json()));
+        if (payloads.some(p => p.status !== "success" || !Array.isArray(p.data))) throw new Error("Unexpected API response");
+        if (!cancelled) {
+          setTrends(payloads[0].data); setDemand(payloads[1].data); setMismatch(payloads[2].data);
+          setSource("live"); setSourceMessage(`Live Flask API · updated ${new Date().toLocaleTimeString()}`);
+        }
+      } catch {
+        if (!cancelled) { setSource("demo"); setSourceMessage("Demo values shown · start the Flask API for live data"); }
       }
-    };
-
-    fetchAllData();
+    }
+    load(); return () => { cancelled = true; };
   }, []);
 
-  // ==========================================
-  // UNIFIED CROSS-MODULE SEARCH FILTER LOGIC
-  // ==========================================
-  const cleanQuery = searchQuery.trim().toLowerCase();
+  const q = query.trim().toLowerCase();
+  const filteredTrends = useMemo(() => trends.filter(r => `${r.state} ${r.category}`.toLowerCase().includes(q)), [trends, q]);
+  const filteredDemand = useMemo(() => demand.filter(r => `${r.state} ${r.city} ${r.product_name} ${r.category}`.toLowerCase().includes(q)), [demand, q]);
+  const filteredMismatch = useMemo(() => mismatch.filter(r => `${r.state} ${r.city} ${r.product_name} ${r.status}`.toLowerCase().includes(q)), [mismatch, q]);
+  const totalOrders = trends.reduce((s, r) => s + (Number(r.total_orders) || 0), 0);
+  const totalRevenue = trends.reduce((s, r) => s + (Number(r.total_revenue) || 0), 0);
+  const shortageCount = mismatch.filter(r => r.status === "CRITICAL_SHORTAGE").length;
+  const avgDemand = demand.length ? demand.reduce((s, r) => s + (Number(r.demand_score) || 0), 0) / demand.length : 0;
+  const topRegions = [...trends].sort((a, b) => b.total_revenue - a.total_revenue).slice(0, 5);
+  const topDemand = [...demand].sort((a, b) => b.demand_score - a.demand_score).slice(0, 5);
 
-  const filteredTrends = trends.filter(
-    (row) =>
-      row.state.toLowerCase().includes(cleanQuery) ||
-      row.category.toLowerCase().includes(cleanQuery),
-  );
-
-  const filteredDemand = demandScores.filter(
-    (row) =>
-      row.state.toLowerCase().includes(cleanQuery) ||
-      row.product_name.toLowerCase().includes(cleanQuery) ||
-      row.city.toLowerCase().includes(cleanQuery) ||
-      row.category.toLowerCase().includes(cleanQuery),
-  );
-
-  const filteredMismatch = mismatchData.filter(
-    (row) =>
-      row.state.toLowerCase().includes(cleanQuery) ||
-      row.product_name.toLowerCase().includes(cleanQuery) ||
-      row.city.toLowerCase().includes(cleanQuery) ||
-      row.status.toLowerCase().includes(cleanQuery),
-  );
-
-  return (
-    <main className="min-h-screen bg-gray-50 text-gray-900 font-sans antialiased pb-12">
-      {/* ==========================================
-          TOP BRANDING NAVIGATION BANNER LAYER
-         ========================================== */}
-      <div className="bg-blue-900 text-white shadow-md mb-6">
-        <div className="max-w-6xl mx-auto px-6 py-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight">
-                Geo-Spatial E-Commerce Analytics Dashboard
-              </h1>
-              <p className="text-blue-200 mt-1 text-sm font-medium">
-                Next.js Application Frontend ➔ Flask Preprocessing API Data
-                Tunnel
-              </p>
-            </div>
-            {/* Reactive Navigation Tab Switches */}
-            <div className="flex bg-blue-950/60 p-1 rounded-lg border border-blue-800 gap-1 self-start md:self-auto">
-              <button
-                onClick={() => setActiveTab("regional-trends")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "regional-trends" ? "bg-blue-600 text-white shadow" : "text-blue-300 hover:text-white"}`}
-              >
-                📍 Trends
-              </button>
-              <button
-                onClick={() => setActiveTab("demand-scores")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "demand-scores" ? "bg-blue-600 text-white shadow" : "text-blue-300 hover:text-white"}`}
-              >
-                📊 Demand
-              </button>
-              <button
-                onClick={() => setActiveTab("supply-demand")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${activeTab === "supply-demand" ? "bg-blue-600 text-white shadow" : "text-blue-300 hover:text-white"}`}
-              >
-                ⚖️ Stock Mismatch
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-6">
-        {/* ==========================================
-            UNIFIED DYNAMIC SEARCH SEARCHBAR COMPONENT
-           ========================================== */}
-        {!loading && !error && (
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="w-full md:max-w-md">
-              <label className="block text-xs font-bold uppercase text-gray-500 mb-1.5 tracking-wider">
-                🔍 Cross-Module Unified Search Engine
-              </label>
-              <input
-                type="text"
-                placeholder="Enter State name or Product catalog label (e.g. Telangana, Product Item 1225)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 text-sm bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white text-gray-900 shadow-inner"
-              />
-            </div>
-            {cleanQuery && (
-              <div className="self-end md:self-auto text-xs font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded-md px-3 py-1.5 shadow-sm">
-                Filtering metrics by query:{" "}
-                <span className="font-bold font-mono">
-                  &quot;{searchQuery}&quot;
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ==========================================
-            UNIFIED PROCESS RUNTIME STATE HANDLING
-           ========================================== */}
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-200 shadow-sm">
-            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="text-gray-600 font-medium">
-              Extracting Columnar Parquet File Vector Blocks...
-            </p>
-          </div>
-        )}
-
-        {error && (
-          <div className="p-6 text-center text-red-700 bg-red-50 rounded-xl border border-red-200 shadow-inner max-w-xl mx-auto">
-            <span className="text-2xl mr-2">⚠️</span>{" "}
-            <strong>Connection Failure:</strong> {error}
-            <p className="text-xs text-red-500 font-normal mt-2">
-              Verify that your local Python Flask service is actively listening
-              on port 5000 and the Spark analytics engines have written out the
-              Parquet folders to your storage space.
-            </p>
-          </div>
-        )}
-
-        {/* ==========================================
-            TAB CONTENT VISUALIZATION GRID BLOCKS
-           ========================================== */}
-        {!loading && !error && (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-200">
-            {/* VIEW TAB 1: REGIONAL SALES TRENDS */}
-            {activeTab === "regional-trends" && (
-              <div>
-                <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center gap-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-blue-950">
-                      Module 1: Regional Sales & Revenue Analysis
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                      Aggregated transaction volumes and total gross GMV
-                      segmented by geographic state boundaries.
-                    </p>
-                  </div>
-                  <span className="text-xs font-mono font-bold bg-blue-50 text-blue-800 px-2.5 py-1 rounded border border-blue-100 shadow-sm">
-                    Showing {filteredTrends.length} records
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-blue-950 text-white font-semibold uppercase text-xs">
-                        <th className="p-4">State Hub</th>
-                        <th className="p-4">Retail Category</th>
-                        <th className="p-4 text-right">Orders Generated</th>
-                        <th className="p-4 text-right">Gross GMV (₹)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {filteredTrends.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="p-8 text-center text-gray-400"
-                          >
-                            No matching regional trends metrics match your
-                            search query layer.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredTrends.map((row, i) => (
-                          <tr
-                            key={i}
-                            className="hover:bg-blue-50/20 transition-colors"
-                          >
-                            <td className="p-4 font-semibold text-gray-800">
-                              {row.state}
-                            </td>
-                            <td className="p-4 text-gray-600">
-                              {row.category}
-                            </td>
-                            <td className="p-4 text-right font-mono text-blue-800">
-                              {row.total_orders.toLocaleString()}
-                            </td>
-                            <td className="p-4 text-right font-mono font-bold text-emerald-700">
-                              ₹
-                              {row.total_revenue.toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                              })}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* VIEW TAB 2: WEIGHTED DEMAND SCORING MATRIX */}
-            {activeTab === "demand-scores" && (
-              <div>
-                <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center gap-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-blue-950">
-                      Module 2: Funnel-Weighted Regional Demand Scores
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                      Min-Max normalized intent score coefficients calculated
-                      using custom funnel thresholds [0.15*Search + 0.20*View +
-                      0.30*Cart + 0.35*Purchase].
-                    </p>
-                  </div>
-                  <span className="text-xs font-mono font-bold bg-blue-50 text-blue-800 px-2.5 py-1 rounded border border-blue-100 shadow-sm whitespace-nowrap">
-                    Showing {filteredDemand.length} records
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-blue-950 text-white font-semibold uppercase text-xs">
-                        <th className="p-4">State Region</th>
-                        <th className="p-4">City Hub Target</th>
-                        <th className="p-4">Product Catalog Label</th>
-                        <th className="p-4">Category</th>
-                        <th className="p-4 text-right">
-                          Composite Demand Index
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {filteredDemand.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={5}
-                            className="p-8 text-center text-gray-400"
-                          >
-                            No matching demand intent scoring entries match your
-                            search query layer.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredDemand.map((row, i) => (
-                          <tr
-                            key={i}
-                            className="hover:bg-blue-50/20 transition-colors"
-                          >
-                            <td className="p-4 text-gray-700">{row.state}</td>
-                            <td className="p-4 font-semibold text-gray-800">
-                              {row.city}
-                            </td>
-                            <td className="p-4 text-gray-900 font-medium">
-                              {row.product_name}
-                            </td>
-                            <td className="p-4 text-gray-500">
-                              {row.category}
-                            </td>
-                            <td className="p-4 text-right">
-                              <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 text-xs">
-                                {row.demand_score.toFixed(4)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* VIEW TAB 3: SUPPLY-DEMAND MISMATCH ENGINE */}
-            {activeTab === "supply-demand" && (
-              <div>
-                <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center gap-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-blue-950">
-                      Module 3: Regional Stock Shortages &amp; Excess Surplus
-                      Tracking
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                      Distributed relational join matching available local
-                      warehouse item counts against computed customer demand
-                      scoring limits.
-                    </p>
-                  </div>
-                  <span className="text-xs font-mono font-bold bg-blue-50 text-blue-800 px-2.5 py-1 rounded border border-blue-100 shadow-sm whitespace-nowrap">
-                    Showing {filteredMismatch.length} records
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="bg-blue-950 text-white font-semibold uppercase text-xs">
-                        <th className="p-4">Region City</th>
-                        <th className="p-4">Target Product Catalog Item</th>
-                        <th className="p-4 text-right">
-                          Available Warehouse Stock
-                        </th>
-                        <th className="p-4 text-right">Demand Intent</th>
-                        <th className="p-4 text-right">
-                          Stock-to-Demand (SDR)
-                        </th>
-                        <th className="p-4 text-center">
-                          Operational Alert State
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {filteredMismatch.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="p-8 text-center text-gray-400"
-                          >
-                            No warehouse balance mismatch rows match your
-                            current search parameters.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredMismatch.map((row, i) => (
-                          <tr
-                            key={i}
-                            className="hover:bg-blue-50/20 transition-colors"
-                          >
-                            <td className="p-4 font-semibold text-gray-800">
-                              {row.city}{" "}
-                              <span className="text-xs text-gray-400 font-normal">
-                                ({row.state})
-                              </span>
-                            </td>
-                            <td className="p-4 text-gray-900 font-medium">
-                              {row.product_name}
-                            </td>
-                            <td className="p-4 text-right font-mono font-semibold text-gray-700">
-                              {row.available_stock.toLocaleString()}
-                            </td>
-                            <td className="p-4 text-right font-mono text-blue-600 text-xs">
-                              {row.demand_score.toFixed(4)}
-                            </td>
-                            <td className="p-4 text-right font-mono font-bold text-gray-800">
-                              {row.sdr.toFixed(4)}
-                            </td>
-                            <td className="p-4 text-center">
-                              <span
-                                className={`px-2.5 py-1 rounded text-xs font-bold shadow-sm border ${
-                                  row.status === "CRITICAL_SHORTAGE"
-                                    ? "bg-red-50 text-red-700 border-red-200 animate-pulse"
-                                    : row.status === "EXCESS_INVENTORY"
-                                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                }`}
-                              >
-                                {row.status.replaceAll("_", " ")}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </main>
-  );
-}
+  const tabs: { id: Tab; label: string }[] = [{ id: "regional-trends", label: "Regional trends" }, { id: "demand-scores", label: "Demand scores" }, { id: "supply-demand", label: "Stock mismatch" }];
