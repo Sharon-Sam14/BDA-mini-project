@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 
 // ==========================================
 // DATA TYPE SCHEMAS MAPPING PYSPARK STRUCTS
@@ -167,6 +168,12 @@ export default function DashboardPage() {
               >
                 ⚖️ Stock Mismatch
               </button>
+              <Link
+                href="/analytics"
+                className="ml-1 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md bg-emerald-400 text-[#08090b] hover:bg-emerald-300 transition-colors shadow-sm whitespace-nowrap"
+              >
+                <span aria-hidden="true">↗</span> View Analytics
+              </Link>
             </div>
           </div>
         </div>
