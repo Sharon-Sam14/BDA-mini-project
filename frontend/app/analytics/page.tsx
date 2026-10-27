@@ -50,7 +50,7 @@ function Sparkline({ values, color = "#35e6a1", height = 62 }: { values: number[
 }
 function BarChart({ values, labels, color = "#29dda0" }: { values: number[]; labels: string[]; color?: string }) {
   const max = Math.max(...values, 1);
-  return <div className="flex h-44 items-end gap-2 sm:gap-3">{values.map((v, i) => <div key={labels[i]} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"><div className="flex h-full w-full items-end"><div title={`${labels[i]}: ${v.toLocaleString()}`} className="w-full rounded-t-md transition-all" style={{ height: `${Math.max(5, (v / max) * 100)}%`, background: `linear-gradient(180deg, ${color}, ${color}55)` }}/></div><span className="w-full truncate text-center text-[9px] text-zinc-500">{labels[i]}</span></div>)}</div>;
+  return <div className="flex h-44 items-end gap-2 sm:gap-3">{values.map((v, i) => <div key={labels[i]} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"><div className="flex h-full w-full items-end"><div title={`${labels[i]}: ${v.toLocaleString("en-IN")}`} className="w-full rounded-t-md transition-all" style={{ height: `${Math.max(5, (v / max) * 100)}%`, background: `linear-gradient(180deg, ${color}, ${color}55)` }}/></div><span className="w-full truncate text-center text-[9px] text-zinc-500">{labels[i]}</span></div>)}</div>;
 }
 function HorizontalBars({ rows }: { rows: { label: string; value: number; color?: string }[] }) {
   const max = Math.max(...rows.map(r => r.value), 1);
