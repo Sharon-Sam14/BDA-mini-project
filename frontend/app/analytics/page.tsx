@@ -90,17 +90,44 @@ export default function AnalyticsPage() {
     load(); return () => { cancelled = true; };
   }, []);
 
-  const filteredTrends = useMemo(() => trends.filter(r => `${r.state} ${r.category}`.toLowerCase().includes(query.toLowerCase())), [trends, query]);
-  const filteredDemand = useMemo(() => demand.filter(r => `${r.state} ${r.city} ${r.product_name} ${r.category}`.toLowerCase().includes(query.toLowerCase())), [demand, query]);
-  const filteredMismatch = useMemo(() => mismatch.filter(r => `${r.state} ${r.city} ${r.product_name} ${r.status}`.toLowerCase().includes(query.toLowerCase())), [mismatch, query]);
-  const totalOrders = trends.reduce((sum, r) => sum + (Number(r.total_orders) || 0), 0);
-  const totalRevenue = trends.reduce((sum, r) => sum + (Number(r.total_revenue) || 0), 0);
-  const shortageCount = mismatch.filter(r => r.status === "CRITICAL_SHORTAGE").length;
-  const avgDemand = demand.length ? demand.reduce((sum, r) => sum + (Number(r.demand_score) || 0), 0) / demand.length : 0;
-  const topRegions = [...trends].sort((a, b) => b.total_revenue - a.total_revenue).slice(0, 5);
-  const topDemand = [...demand].sort((a, b) => b.demand_score - a.demand_score).slice(0, 5);
-  const trendBars = trends.slice(0, 7);
-  const categoryMap = trends.reduce<Record<string, number>>((acc, row) => { acc[row.category] = (acc[row.category] || 0) + row.total_revenue; return acc; }, {});
+  // The current Flask endpoints return pre-aggregated rows without timestamps.
+  // In preview mode, range presets therefore use clearly-labelled illustrative
+  // period estimates so the controls visibly change the charts and KPIs.
+  // Live API data is left untouched until date-stamped/event-level data is available.
+  const previewFactors: Record<string, { volume: number; demand: number; stock: number }> = {
+    "Last 7 days": { volume: 0.24, demand: -0.035, stock: 0.92 },
+    "Last 30 days": { volume: 1, demand: 0, stock: 1 },
+    "Last 90 days": { volume: 2.65, demand: 0.025, stock: 1.08 },
+    "Year to date": { volume: 7.4, demand: 0.045, stock: 1.16 },
+  };
+  const periodFactor = previewFactors[range] || previewFactors["Last 30 days"];
+  const periodTrends = useMemo(() => source === "demo" ? trends.map(r => ({
+    ...r,
+    total_orders: Math.max(1, Math.round(r.total_orders * periodFactor.volume)),
+    total_revenue: Math.max(1, Math.round(r.total_revenue * periodFactor.volume)),
+  })) : trends, [trends, source, range]);
+  const periodDemand = useMemo(() => source === "demo" ? demand.map((r, i) => ({
+    ...r,
+    demand_score: Math.max(0.05, Math.min(0.99, r.demand_score + periodFactor.demand + ((i % 2 === 0 ? 1 : -1) * Math.abs(periodFactor.demand) * 0.18))),
+  })) : demand, [demand, source, range]);
+  const periodMismatch = useMemo(() => source === "demo" ? mismatch.map((r, i) => {
+    const available_stock = Math.max(1, Math.round(r.available_stock * periodFactor.stock * (1 + ((i % 3) - 1) * (range === "Last 30 days" ? 0 : 0.035))));
+    const demand_score = Math.max(0.05, Math.min(0.99, r.demand_score + periodFactor.demand));
+    const sdr = Number((r.sdr * periodFactor.stock / Math.max(0.85, 1 + periodFactor.demand)).toFixed(3));
+    const status = sdr < 0.7 ? "CRITICAL_SHORTAGE" : sdr > 2 ? "EXCESS_INVENTORY" : "BALANCED";
+    return { ...r, available_stock, demand_score, sdr, status };
+  }) : mismatch, [mismatch, source, range]);
+  const filteredTrends = useMemo(() => periodTrends.filter(r => `${r.state} ${r.category}`.toLowerCase().includes(query.toLowerCase())), [periodTrends, query]);
+  const filteredDemand = useMemo(() => periodDemand.filter(r => `${r.state} ${r.city} ${r.product_name} ${r.category}`.toLowerCase().includes(query.toLowerCase())), [periodDemand, query]);
+  const filteredMismatch = useMemo(() => periodMismatch.filter(r => `${r.state} ${r.city} ${r.product_name} ${r.status}`.toLowerCase().includes(query.toLowerCase())), [periodMismatch, query]);
+  const totalOrders = periodTrends.reduce((sum, r) => sum + (Number(r.total_orders) || 0), 0);
+  const totalRevenue = periodTrends.reduce((sum, r) => sum + (Number(r.total_revenue) || 0), 0);
+  const shortageCount = periodMismatch.filter(r => r.status === "CRITICAL_SHORTAGE").length;
+  const avgDemand = periodDemand.length ? periodDemand.reduce((sum, r) => sum + (Number(r.demand_score) || 0), 0) / periodDemand.length : 0;
+  const topRegions = [...periodTrends].sort((a, b) => b.total_revenue - a.total_revenue).slice(0, 5);
+  const topDemand = [...periodDemand].sort((a, b) => b.demand_score - a.demand_score).slice(0, 5);
+  const trendBars = periodTrends.slice(0, 7);
+  const categoryMap = periodTrends.reduce<Record<string, number>>((acc, row) => { acc[row.category] = (acc[row.category] || 0) + row.total_revenue; return acc; }, {});
   const categoryRows = Object.entries(categoryMap).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value], i) => ({ label, value, color: ["#35e6a1", "#22c8d9", "#9c7bff", "#f5c84b", "#fb7185"][i] }));
 
   const tabs: { id: Tab; label: string }[] = [{ id: "overview", label: "Overview" }, { id: "regional-trends", label: "Regional trends" }, { id: "demand-scores", label: "Demand scoring" }, { id: "supply-demand", label: "Stock mismatch" }];
@@ -112,7 +139,7 @@ export default function AnalyticsPage() {
       </header>
 
       <nav className="mb-6 flex gap-1 overflow-x-auto rounded-xl border border-white/[0.07] bg-[#101116] p-1">{tabs.map(t => <button key={t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap rounded-lg px-4 py-2.5 text-xs transition ${tab === t.id ? "bg-[#25272f] text-white shadow" : "text-zinc-500 hover:text-zinc-200"}`}>{t.label}</button>)}</nav>
-      <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p className="text-xs text-zinc-500">{range} <span className="mx-1 text-zinc-700">/</span> India regional dataset</p><p className="mt-1 text-[10px] text-zinc-600">{lastUpdated}</p></div><div className="relative w-full sm:max-w-xs"><span className="absolute left-3 top-2.5 text-zinc-500">⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search state, city, product…" className="w-full rounded-xl border border-white/[0.09] bg-[#101116] py-2.5 pl-9 pr-3 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-emerald-300/50"/></div></div>
+      <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><p className="text-xs text-zinc-500">{range} <span className="mx-1 text-zinc-700">/</span> India regional dataset</p><p className="mt-1 text-[10px] text-zinc-600">{lastUpdated}</p><p className="mt-1 text-[10px] text-zinc-600">{source === "demo" ? "Preview range estimates · values update with the selected period" : "Live API aggregates · endpoints do not currently include timestamps, so date-range filtering is not applied to live records"}</p></div><div className="relative w-full sm:max-w-xs"><span className="absolute left-3 top-2.5 text-zinc-500">⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search state, city, product…" className="w-full rounded-xl border border-white/[0.09] bg-[#101116] py-2.5 pl-9 pr-3 text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-emerald-300/50"/></div></div>
 
       {tab === "overview" && <>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -133,7 +160,7 @@ export default function AnalyticsPage() {
 
       {tab === "demand-scores" && <div className="grid grid-cols-1 gap-4 xl:grid-cols-12"><Panel className="xl:col-span-5"><PanelTitle eyebrow="Module 02 · Intent engine" title="Demand score distribution"/><div className="space-y-4">{filteredDemand.slice(0,8).map(r=><div key={`${r.city}-${r.product_name}`}><div className="mb-2 flex justify-between gap-3 text-xs"><span className="truncate text-zinc-300">{r.product_name} <span className="text-zinc-600">· {r.city}</span></span><span className="font-mono text-emerald-300">{Number(r.demand_score).toFixed(4)}</span></div><div className="h-2 rounded-full bg-white/[0.07]"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-300" style={{width:`${Math.max(0,Math.min(100,r.demand_score*100))}%`}}/></div></div>)}</div><p className="mt-5 text-[10px] leading-relaxed text-zinc-600">Composite intent score uses the project funnel weighting: 0.15 × Search + 0.20 × View + 0.30 × Cart + 0.35 × Purchase.</p></Panel><Panel className="xl:col-span-7"><PanelTitle title="Demand scoring records" side={<Pill>{filteredDemand.length} records</Pill>}/><div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-zinc-500"><tr className="border-b border-white/[0.08]"><th className="pb-3">Product</th><th className="pb-3">City / state</th><th className="pb-3">Category</th><th className="pb-3 text-right">Score</th></tr></thead><tbody>{filteredDemand.map((r,i)=><tr key={`${r.city}-${r.product_name}-${i}`} className="border-b border-white/[0.04] last:border-0"><td className="py-3 font-medium text-zinc-200">{r.product_name}</td><td className="py-3 text-zinc-400">{r.city}, {r.state}</td><td className="py-3 text-zinc-500">{r.category}</td><td className="py-3 text-right font-mono text-emerald-300">{Number(r.demand_score).toFixed(4)}</td></tr>)}</tbody></table></div></Panel></div>}
 
-      {tab === "supply-demand" && <div className="grid grid-cols-1 gap-4 xl:grid-cols-12"><Panel className="xl:col-span-4"><PanelTitle eyebrow="Module 03 · Stock health" title="Alert summary"/><div className="space-y-3">{[{label:"Critical shortage",count:mismatch.filter(r=>r.status==="CRITICAL_SHORTAGE").length,tone:"red" as const},{label:"Excess inventory",count:mismatch.filter(r=>r.status==="EXCESS_INVENTORY").length,tone:"yellow" as const},{label:"Balanced",count:mismatch.filter(r=>r.status!=="CRITICAL_SHORTAGE"&&r.status!=="EXCESS_INVENTORY").length,tone:"green" as const}].map(item=><div key={item.label} className="flex items-center justify-between rounded-xl bg-white/[0.03] p-4"><span className="text-xs text-zinc-300">{item.label}</span><Pill tone={item.tone}>{item.count} items</Pill></div>)}</div></Panel><Panel className="xl:col-span-8"><PanelTitle title="Supply-demand mismatch records" side={<Pill>{filteredMismatch.length} records</Pill>}/><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-zinc-500"><tr className="border-b border-white/[0.08]"><th className="pb-3">City / state</th><th className="pb-3">Product</th><th className="pb-3 text-right">Stock</th><th className="pb-3 text-right">Demand</th><th className="pb-3 text-right">SDR</th><th className="pb-3 text-right">Status</th></tr></thead><tbody>{filteredMismatch.map((r,i)=><tr key={`${r.city}-${r.product_name}-${i}`} className="border-b border-white/[0.04] last:border-0"><td className="py-3 text-zinc-300">{r.city}, {r.state}</td><td className="py-3 font-medium text-zinc-200">{r.product_name}</td><td className="py-3 text-right font-mono text-zinc-400">{r.available_stock.toLocaleString()}</td><td className="py-3 text-right font-mono text-zinc-400">{Number(r.demand_score).toFixed(3)}</td><td className="py-3 text-right font-mono text-zinc-400">{Number(r.sdr).toFixed(3)}</td><td className="py-3 text-right"><Pill tone={r.status==="CRITICAL_SHORTAGE"?"red":r.status==="EXCESS_INVENTORY"?"yellow":"green"}>{r.status.replaceAll("_"," ")}</Pill></td></tr>)}</tbody></table></div></Panel></div>}
+      {tab === "supply-demand" && <div className="grid grid-cols-1 gap-4 xl:grid-cols-12"><Panel className="xl:col-span-4"><PanelTitle eyebrow="Module 03 · Stock health" title="Alert summary"/><div className="space-y-3">{[{label:"Critical shortage",count:periodMismatch.filter(r=>r.status==="CRITICAL_SHORTAGE").length,tone:"red" as const},{label:"Excess inventory",count:periodMismatch.filter(r=>r.status==="EXCESS_INVENTORY").length,tone:"yellow" as const},{label:"Balanced",count:periodMismatch.filter(r=>r.status!=="CRITICAL_SHORTAGE"&&r.status!=="EXCESS_INVENTORY").length,tone:"green" as const}].map(item=><div key={item.label} className="flex items-center justify-between rounded-xl bg-white/[0.03] p-4"><span className="text-xs text-zinc-300">{item.label}</span><Pill tone={item.tone}>{item.count} items</Pill></div>)}</div></Panel><Panel className="xl:col-span-8"><PanelTitle title="Supply-demand mismatch records" side={<Pill>{filteredMismatch.length} records</Pill>}/><div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-zinc-500"><tr className="border-b border-white/[0.08]"><th className="pb-3">City / state</th><th className="pb-3">Product</th><th className="pb-3 text-right">Stock</th><th className="pb-3 text-right">Demand</th><th className="pb-3 text-right">SDR</th><th className="pb-3 text-right">Status</th></tr></thead><tbody>{filteredMismatch.map((r,i)=><tr key={`${r.city}-${r.product_name}-${i}`} className="border-b border-white/[0.04] last:border-0"><td className="py-3 text-zinc-300">{r.city}, {r.state}</td><td className="py-3 font-medium text-zinc-200">{r.product_name}</td><td className="py-3 text-right font-mono text-zinc-400">{r.available_stock.toLocaleString()}</td><td className="py-3 text-right font-mono text-zinc-400">{Number(r.demand_score).toFixed(3)}</td><td className="py-3 text-right font-mono text-zinc-400">{Number(r.sdr).toFixed(3)}</td><td className="py-3 text-right"><Pill tone={r.status==="CRITICAL_SHORTAGE"?"red":r.status==="EXCESS_INVENTORY"?"yellow":"green"}>{r.status.replaceAll("_"," ")}</Pill></td></tr>)}</tbody></table></div></Panel></div>}
 
       <footer className="mt-7 flex flex-col gap-2 border-t border-white/[0.07] pt-4 text-[10px] text-zinc-600 sm:flex-row sm:items-center sm:justify-between"><span>Geo-Spatial E-Commerce Analytics · Apache Spark / PySpark / Spark SQL</span><span>Parquet · HDFS · Location-aware trend detection</span></footer>
     </div>
